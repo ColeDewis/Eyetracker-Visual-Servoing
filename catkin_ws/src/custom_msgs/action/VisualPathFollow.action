@@ -1,0 +1,32 @@
+# Goal
+float32 lambda_step     # lambda step for servoing to the path
+
+# constants for the interaction matrix
+float32 alpha_1    
+float32 alpha_2
+float32 beta_1
+float32 beta_2
+
+float32 decay       # decay for velocity matching term w.r.t. error
+float32 speed       # speed for velocity matching
+uint32 rate         # hz for iterating
+bool use_depth      # whether to use a depth camera stream
+bool match_yaw     
+bool hold_z
+bool track_path     # whether to track the path; if yes, expects a Contour msg on /tracking_node/cam{NUM}/contours
+uint32 max_iterations
+
+# points for the path, can be empty if track_path is true
+float32[] path_x_points
+float32[] path_y_points
+
+# stopping condition, 1 = "circle", 0 = "default"
+uint8 stopping_condition
+---
+# Result
+bool path_finished
+---
+# Feedback
+uint32 iteration
+float32 t
+float32[] velocities # [v, w]

@@ -1,0 +1,13 @@
+# Goal
+float32 step_size
+float32 threshold 
+uint32 max_it
+float32 desired_depth
+DesiredFeature[] desired_features
+---
+# Result
+bool converged
+---
+# Feedback
+float32 remaining_error_norm
+uint32 iteration

@@ -1,0 +1,5 @@
+sensor_msgs/Image image
+string[] phrases
+float32 confidence_threshold
+--- 
+sensor_msgs/Image segmented_image

@@ -1,0 +1,16 @@
+# Goal
+float32 learn_rate
+float32 init_step_size
+float32 max_step_size
+float32 threshold 
+uint32 max_it
+uint32 num_joints
+string[] waypoint_ids
+---
+# Result
+bool converged
+---
+# Feedback
+uint32 waypoint_num
+float32 remaining_error_norm
+uint32 iteration

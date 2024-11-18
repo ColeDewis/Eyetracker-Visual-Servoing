@@ -1,0 +1,4 @@
+string id
+---
+bool success
+bool no_more_waypoints

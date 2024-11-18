@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  eyetracking_vs:
+    container_name: eyetracking_vs
+    working_dir: /home/user/eyetracking_vs
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    network_mode: host
+    tty: true
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - ../eyetracking_vs:/home/user/eyetracking_vs
+      - /tmp/.X11-unix:/tmp/.X11-unix

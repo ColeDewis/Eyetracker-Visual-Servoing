@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Cameras to start in sim.-->
+    <!-- options: birdview, frontview, agentview, sideview, robot0_robotview, robot0_eye_in_hand -->
+    <arg name="cameras" default="[robot0_eye_in_hand]"/>  <!-- birdview -->
+
+    <!-- Control method to use in simulator -->
+    <!-- Options: joint_velocity, joint_position, joint_torque, eef_pose. Cartesian velocity is part of joint_velocity. -->
+    <arg name="control_type" default="joint_velocity"/>
+
+    <!-- Names to publish the cameras under as opposed to the defaults. If length doesn't match cameras list, will be ignored. -->
+    <arg name="camera_remappings" default="[cam0]"/>
+
+    <!-- IDs to automatically "track" from the segmentation rendering -->
+    <!-- Typical options: 0, 8, 13, 15, 17, 19, 21, 23, 25, 27, 31, 33, 44, 55, 56, 59 -->
+    <!-- 27 is top of camera which is good for top-down eef tracking, 59 is the cube -->
+    <arg name="track_ids" default="[27]"/> <!-- 27-->
+
+    <!-- IDs to "track edges" of for contour following -->
+    <arg name="edge_track_ids" default="[59]"/> 
+
+    <arg name="start_rviz" default="false"/>
+    <arg name="start_rqt" default="true"/>
+
+    <node pkg="simulator" name="simulator" type="run_simulator.py" output="screen">
+        <rosparam param="cameras" subst_value="True">$(arg cameras)</rosparam>
+        <rosparam param="camera_remappings" subst_value="True">$(arg camera_remappings)</rosparam>
+        <rosparam param="track_ids" subst_value="True">$(arg track_ids)</rosparam>
+        <rosparam param="edge_track_ids" subst_value="True">$(arg edge_track_ids)</rosparam>
+        <param name="control_type" value="$(arg control_type)"/>
+    </node>
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find simulator)/config/config.rviz" if="$(arg start_rviz)"></node>
+    <node pkg="rqt_gui" type="rqt_gui" name="rqt_gui" args="--perspective-file $(find simulator)/config/default.perspective" if="$(arg start_rqt)"></node>
+</launch>

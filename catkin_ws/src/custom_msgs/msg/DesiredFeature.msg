@@ -1,0 +1,2 @@
+uint32 camera_idx
+Point2D point

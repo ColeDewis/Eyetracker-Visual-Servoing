@@ -1,0 +1,14 @@
+# Goal
+float32 step_size
+float32 threshold 
+uint32 max_it
+IBVSWaypoint[] ibvs_waypoints
+string[] waypoint_ids
+---
+# Result
+bool converged
+---
+# Feedback
+uint32 waypoint_num
+float32 remaining_error_norm
+uint32 iteration

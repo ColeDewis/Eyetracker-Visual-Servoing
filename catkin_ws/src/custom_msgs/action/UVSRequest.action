@@ -1,0 +1,17 @@
+# Goal
+float32 learn_rate
+float32 init_step_size
+float32 max_step_size
+float32 threshold 
+uint32 max_it
+uint32 num_joints
+bool has_init_jacobian
+Matrix starting_jacobian    # empty if has_init_jacobian is false
+---
+# Result
+bool converged
+Matrix initial_jacobian     # a bit hacky, is for excavation
+---
+# Feedback
+float32 remaining_error_norm
+uint32 iteration
