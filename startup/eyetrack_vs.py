@@ -6,7 +6,7 @@ if __name__ == "__main__":
     server = libtmux.Server(
         config_file=path.expandvars("/home/user/eyetracking_vs/scripts/.tmux.conf")
     )
-    if server.has_session("sim"):
+    if server.has_session("eye_vs"):
         exit()
     else:
         session = server.new_session(
@@ -15,10 +15,10 @@ if __name__ == "__main__":
 
     # terminals for the simulation to start
     terminals = {
-        "rqt": "rqt",
         "kortex_bringup": "roslaunch kortex_bringup kortex_bringup.launch",  # launch kortex - note that this starts a roscore
-        "cameras": f"roslaunch --wait camera_node cameras.launch idxone:={0} idxtwo:={1} two_is_rs:=false",
-        "tracking": 'rosrun tracking tracking_node.py _idxs:="[0,1]"',
+        "eyetracker": "rosrun eyetracker tobii_et_node.py",
+        "gui": "rosrun eyetrack_vs qt_cam.py",
+        "camera": f"roslaunch --wait camera_node d405.launch",
         "visual_servoing": "rosrun visual_servoing visual_servo_node.py",
     }
 

@@ -1,4 +1,6 @@
-# Landmine
+# Eyetracker-Visual-Servoing
+
+Code for image based visual servoing using an eyetracker.
 
 The base image requires you to authenticate with github, run `echo {PAT} | docker login ghcr.io -u USERNAME --password-stdin`
 

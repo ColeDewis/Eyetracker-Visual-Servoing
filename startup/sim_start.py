@@ -4,13 +4,13 @@ from os import path
 
 if __name__ == "__main__":
     server = libtmux.Server(
-        config_file=path.expandvars("/home/user/landmine/startup/.tmux.conf")
+        config_file=path.expandvars("/home/user/eyetracking_vs/startup/.tmux.conf")
     )
     if server.has_session("sim"):
         exit()
     else:
         session = server.new_session(
-            "sim", start_directory="/home/user/landmine", attach=False
+            "sim", start_directory="/home/user/eyetracking_vs", attach=False
         )
 
     # terminals for the simulation to start

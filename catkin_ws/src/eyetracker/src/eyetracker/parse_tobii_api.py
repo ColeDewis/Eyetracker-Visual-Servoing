@@ -41,16 +41,16 @@ def coord_to_pixels(gaze_point: GazePoint):
     if gaze_point.position_xy.x < 0.0:
         x = 0
     elif gaze_point.position_xy.x > 1.0:
-        x = height
+        x = width
     else:
-        x = round(gaze_point.position_xy.x * height)
+        x = round(gaze_point.position_xy.x * width)
 
     if gaze_point.position_xy.y < 0.0:
         y = 0
     elif gaze_point.position_xy.y > 1.0:
-        y = width
+        y = height
     else:
-        y = round(gaze_point.position_xy.y * width)
+        y = round(gaze_point.position_xy.y * height)
 
     screen_coordinate = ScreenCoordinate(x, y)
 

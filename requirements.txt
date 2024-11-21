@@ -21,3 +21,5 @@ PyOpenGL==3.1.4
 roboticstoolbox-python
 h5py
 pyautogui
+imutils
+screeninfo
