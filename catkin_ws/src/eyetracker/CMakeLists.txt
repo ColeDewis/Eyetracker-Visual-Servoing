@@ -58,6 +58,7 @@ add_message_files(
   ValidGazeOrigin.msg
   ValidGazePoint.msg 
   ValidUserPresence.msg
+  ClassifiedGazePoint.msg
 )
 
 ## Generate services in the 'srv' folder

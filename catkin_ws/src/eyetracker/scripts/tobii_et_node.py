@@ -1,5 +1,7 @@
 #!/usr/bin/python3.10
+import queue
 import rospy
+import numpy as np
 
 from tobii_stream_engine import (
     Api,
@@ -17,6 +19,7 @@ from tobii_stream_engine import (
 import eyetracker.msg as eyemsg
 from geometry_msgs.msg import Point
 from eyetracker.parse_tobii_api import coord_to_pixels
+from eyetracker.gaze_classifier import IVDTClassifier
 from typing import TypedDict
 
 
@@ -89,6 +92,11 @@ class TobiiEyeTracker:
         self.user_presence_publisher = rospy.Publisher(
             "/eyetracker/user_presence", eyemsg.UserPresence, queue_size=10
         )
+        self.classified_gaze_publisher = rospy.Publisher(
+            "/eyetracker/classified_gaze_point",
+            eyemsg.ClassifiedGazePoint,
+            queue_size=10,
+        )
 
         ### Validated publishers
 
@@ -106,6 +114,15 @@ class TobiiEyeTracker:
         )
         self.valid_user_presence_publisher = rospy.Publisher(
             "/eyetracker/user_presence_valid", eyemsg.ValidUserPresence, queue_size=10
+        )
+
+        ### Classifiers
+        ### NOTE: these parameters are not tuned, like, at all, but the classifier does "work"
+        win_size = 10
+        disp_thresh = 20
+        vel_thresh = 20
+        self.ivdt_classifier = IVDTClassifier(
+            win_size=win_size, vel_thres=vel_thresh, disp_thresh=disp_thresh
         )
 
         ### Start the device
@@ -146,6 +163,16 @@ class TobiiEyeTracker:
         message.x = pixels.x
         message.y = pixels.y
         self.gaze_point_publisher.publish(message)
+
+        point, class_str = self.ivdt_classifier.add_point(
+            np.array([pixels.x, pixels.y])
+        )
+        if point is not None:
+            msg = eyemsg.ClassifiedGazePoint(
+                validity=gaze_point.validity, x=point[0], y=point[1], type=class_str
+            )
+            msg.header.stamp = now
+            self.classified_gaze_publisher.publish(msg)
 
         message_raw = eyemsg.GazePoint()
         message_raw.header.stamp = now

@@ -16,14 +16,14 @@ from PyQt5.QtCore import (
     pyqtSlot as Slot,
 )
 import numpy as np
-from sympy import false
 import rospy
-from eyetracker.msg import GazePoint
+from eyetracker.msg import GazePoint, ClassifiedGazePoint
 from custom_msgs.msg import Point2D
 
 
 class EyetrackThread(QThread):
     gaze_signal = Signal(np.ndarray)
+    class_gaze_signal = Signal(list)
 
     def __init__(self):
         super().__init__()
@@ -34,6 +34,12 @@ class EyetrackThread(QThread):
             self.gaze_cb,
             queue_size=10,
         )
+        self.classified_eye_sub = rospy.Subscriber(
+            "/eyetracker/classified_gaze_point",
+            ClassifiedGazePoint,
+            self.class_gaze_cb,
+            queue_size=10,
+        )
 
     def run(self):
         rospy.spin()
@@ -41,6 +47,10 @@ class EyetrackThread(QThread):
     def gaze_cb(self, data: GazePoint):
         if data.validity:
             self.gaze_signal.emit(np.array([data.x, data.y]))
+
+    def class_gaze_cb(self, data: ClassifiedGazePoint):
+        if data.validity:
+            self.class_gaze_signal.emit([np.array([data.x, data.y]), data.type])
 
 
 class MainApp(QtWidgets.QMainWindow):
@@ -68,9 +78,11 @@ class MainApp(QtWidgets.QMainWindow):
         # TODO: might not be any point of this being a thread atm
         self.eye_thread = EyetrackThread()
         self.eye_thread.gaze_signal.connect(self.drawEyePos)
+        self.eye_thread.class_gaze_signal.connect(self.drawClassEyePos)
         self.eye_thread.start()
 
         self.last_eye = np.zeros(2)
+        self.last_class = None
         self.drawEyePos(self.last_eye)
 
     @Slot(np.ndarray)
@@ -83,6 +95,12 @@ class MainApp(QtWidgets.QMainWindow):
         )
         self.update()
 
+    @Slot(list)
+    def drawClassEyePos(self, pos):
+        # eye_pos = pos[0]
+        self.last_class = pos[1]
+        # self.drawEyePos(eye_pos)
+
     def paintEvent(self, a0: QPaintEvent) -> None:
         painter = QPainter()
         painter.begin(self)
@@ -90,7 +108,16 @@ class MainApp(QtWidgets.QMainWindow):
         painter.drawEllipse(
             QPointF(self.last_eye[0] - 70, self.last_eye[1] - 27), 20, 20
         )
-        painter.setPen(QPen(Qt.black, 3))
+
+        if self.last_class == "saccade":
+            painter.setPen(QPen(Qt.red, 3))
+        elif self.last_class == "pursuit":
+            painter.setPen(QPen(Qt.blue, 3))
+        elif self.last_class == "fixation":
+            painter.setPen(QPen(Qt.green, 3))
+        else:
+            painter.setPen(QPen(Qt.black, 3))
+
         painter.drawEllipse(
             QPointF(self.last_eye[0] - 70, self.last_eye[1] - 27), 20, 20
         )
