@@ -160,6 +160,7 @@ include_directories(
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   src/qt_cam.py
+  src/overlay.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

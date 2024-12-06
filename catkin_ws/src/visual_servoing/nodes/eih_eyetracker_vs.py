@@ -48,6 +48,7 @@ class VS_PFC:
         # state variables
         self.last_target = None
         self.last_depth_array = None
+        self.last_eye_time = rospy.Time(0)
         self.last_joints = np.zeros(7)
 
         # TF buffer
@@ -60,12 +61,12 @@ class VS_PFC:
             Point2D,
             self.target_callback,
         )
-        self.img_sub = rospy.Subscriber(
-            f"/camera/color/image_raw",
-            Image,
-            self.visualization_cb,
-            queue_size=1,
-        )
+        # self.img_sub = rospy.Subscriber(
+        #     f"/camera/color/image_raw",
+        #     Image,
+        #     self.visualization_cb,
+        #     queue_size=1,
+        # )
         self.depth_sub = rospy.Subscriber(
             f"/camera/aligned_depth_to_color/image_raw",
             Image,
@@ -77,12 +78,14 @@ class VS_PFC:
 
         rospy.sleep(0.5)
         rospy.loginfo("VS is ready to run!")
+        self.visual_servo_loop()
 
     def joint_cb(self, msg: JointState):
         self.last_joints = msg.position[:7]
 
     def target_callback(self, msg: Point2D):
         self.last_target = np.array([msg.x, msg.y])
+        self.last_eye_time = rospy.get_rostime()
 
     def move_vel(self, velocities):
         """Send the given twist to the kinova
@@ -128,7 +131,7 @@ class VS_PFC:
         depth_array = np.array(depth_image, dtype=np.float32)
         self.last_depth_array = depth_array / 1000  # convert to meters
 
-    def generate_interaction_matrix(self, desired_points, camera_idx) -> list:
+    def generate_interaction_matrix(self, desired_points) -> list:
         """Generates the interaction matrix for velocity control for given image points and camera transformation.
 
         Args:
@@ -140,7 +143,7 @@ class VS_PFC:
         """
         # get transform from camera to base
         try:
-            cam_frame = "eye_in_hand_cam"
+            cam_frame = "camera_color_frame"
             eef_transform: TransformStamped = self.tf_buffer.lookup_transform(
                 "base_link",
                 cam_frame,
@@ -237,7 +240,6 @@ class VS_PFC:
         BETA_1 = beta_1
         BETA_2 = beta_2
         r = rospy.Rate(RATE)
-        t = 0
         it = 0
 
         error_pos = []
@@ -256,13 +258,11 @@ class VS_PFC:
             last_depth = depth
 
             L_bar = self.generate_interaction_matrix(
-                np.array([[pose[0], pose[1], depth]]),
-                camera_idx=VS_PFC.C_IDX,
+                np.array([[pose[0], pose[1], depth]])
             )
 
             L_star = self.generate_interaction_matrix(
-                np.array([[self.last_target[0], self.last_target[1], depth]]),
-                camera_idx=VS_PFC.C_IDX,
+                np.array([[self.last_target[0], self.last_target[1], depth]])
             )
 
             error_p[:2] = (ALPHA_1 + ALPHA_2) * error_p[:2]
@@ -275,20 +275,20 @@ class VS_PFC:
 
             vels_p = -LAMBDA * L_inv @ error_p.T
 
-            # for EIH, use -vels
-            self.move_vel(vels_p)
+            if abs(rospy.get_rostime().to_sec() - self.last_eye_time.to_sec()) < 0.1:
+                self.move_vel(vels_p)
+            else:
+                self.move_vel(np.zeros(6))
 
             error_pos.append(error_p[:2])
             targets.append(self.last_target)
 
             r.sleep()
-            rospy.loginfo(
-                f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}, t: {t}"
-            )
+            rospy.loginfo(f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}")
             it += 1
 
         # done, stop moving
-        self.move_vel([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], stop=True)  # stop moving
+        self.move_vel([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         # reset tracking
         self.track_reset_pub.publish(String(data="vspfc"))

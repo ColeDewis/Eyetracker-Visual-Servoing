@@ -83,6 +83,10 @@ class Simulator:
         self.contour_publishers = {}
         self.mock_contour_image_publishers = {}
 
+        self.rs_pub = rospy.Publisher(f"/camera/color/image_raw", Image, queue_size=10)
+        self.rs_d_pub = rospy.Publisher(
+            f"/camera/aligned_depth_to_color/image_raw", Image, queue_size=10
+        )
         for camera in cameras:
             self.camera_publishers[camera] = rospy.Publisher(
                 f"/cameras/{self.camera_mapping[camera]}", Image, queue_size=10
@@ -335,7 +339,7 @@ class Simulator:
         Args:
             obs (dict): observations returned from simulation step
         """
-        for camera in self.cameras:
+        for i, camera in enumerate(self.cameras):
             image = obs[f"{camera}_image"]
 
             # depth
@@ -361,6 +365,11 @@ class Simulator:
             self.depth_publishers[camera].publish(depth_img)
             self.segmentation_publishers[camera].publish(seg_img)
             self.segmentation_raw_publishers[camera].publish(seg_raw)
+
+            # NOTE hacky for now just to get the topic i want
+            if i == 0:
+                self.rs_pub.publish(image)
+                self.rs_d_pub.publish(depth_img)
 
     def __mock_tracking(self, camera, base_image, segmentation_image):
         """Runs mock tracking on a segmentation image. Tracks any IDs that were given in the launch arg.
