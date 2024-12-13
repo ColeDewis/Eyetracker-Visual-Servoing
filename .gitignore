@@ -12,3 +12,4 @@ bags
 junk
 learning
 notes.md
+catkin_ws/src/sam2/checkpoints/*.pt

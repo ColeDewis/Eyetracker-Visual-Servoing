@@ -250,30 +250,54 @@ class VS_PFC:
         while it < max_it:
             start = rospy.get_rostime().to_sec()
 
-            error_p = np.hstack([pose - self.last_target, pose - self.last_target])
-
             # interaction for the end effector
             depth = self.__get_pixel_depth(pose) if use_depth else 0.5
             depth = depth if depth != 0 else last_depth
             last_depth = depth
+            target_depth = self.__get_pixel_depth(self.last_target)
 
+            # we want to drive depth to 0, however we actually want ~15cm. temp hack to speed up convergence
+            # error_d = target_depth * 10 if target_depth > 0.1 else 0
+
+            # NOTE: this depth attempt doesn't really work, just causes bad rotational movement.
+            # it is worth noting i did get SOME depth motion when using target_depth instead of depth
+            # in L_star, which could be a route to investigate..
+            # error_p = np.hstack(
+            #     [pose - self.last_target, pose - self.last_target, error_d]
+            # )
+            error_p = np.hstack([pose - self.last_target, pose - self.last_target])
             L_bar = self.generate_interaction_matrix(
                 np.array([[pose[0], pose[1], depth]])
             )
 
+            # interestingly, using target_depth instead of depth gives really wack behavior
             L_star = self.generate_interaction_matrix(
                 np.array([[self.last_target[0], self.last_target[1], depth]])
             )
+            L_z = np.array(
+                [
+                    0,
+                    0,
+                    -1,
+                    -self.last_target[1] * target_depth,
+                    self.last_target[0] * target_depth,
+                    0,
+                ]
+            )
 
             error_p[:2] = (ALPHA_1 + ALPHA_2) * error_p[:2]
-            error_p[2:] = (BETA_1 + BETA_2) * error_p[2:]
+            error_p[2:4] = (BETA_1 + BETA_2) * error_p[2:4]
 
             L = np.zeros((4, 6))
+            # L = np.zeros((5, 6))
             L[:2, :] = ALPHA_1 * L_bar + ALPHA_2 * L_star
-            L[2:, :] = BETA_1 * L_bar + BETA_2 * L_star
+            L[2:4, :] = BETA_1 * L_bar + BETA_2 * L_star
+            # L[4, :] = L_z
             L_inv = pinv(L)
 
+            rospy.loginfo(f"Error: {error_p}")
             vels_p = -LAMBDA * L_inv @ error_p.T
+            rospy.loginfo(f"Vels: {vels_p}")
 
             if abs(rospy.get_rostime().to_sec() - self.last_eye_time.to_sec()) < 0.1:
                 self.move_vel(vels_p)

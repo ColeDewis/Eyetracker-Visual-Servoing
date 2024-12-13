@@ -25,6 +25,10 @@ RUN conan config set general.revisions_enabled=1 && \
     conan profile update settings.compiler.libcxx=libstdc++11 default
 RUN rosdep update
 
+# build the fork of SAM2 that has real-time video prediction
+# NOTE requires CUDA
+# RUN cd /tmp && git clone https://github.com/Gy920/segment-anything-2-real-time.git && cd segment-anything-2-real-time && python3.10 -m pip install -e .
+
 # aliases
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 RUN echo "source /home/user/eyetracking_vs/catkin_ws/devel/setup.bash" >> ~/.bashrc

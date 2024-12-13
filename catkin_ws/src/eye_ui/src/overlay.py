@@ -97,9 +97,9 @@ class MainApp(QtWidgets.QMainWindow):
 
     @Slot(list)
     def drawClassEyePos(self, pos):
-        # eye_pos = pos[0]
+        # ends up being bad if we actually use the points we get from this for visualization,
+        # but the color visualization for classifying is nice to have available
         self.last_class = pos[1]
-        # self.drawEyePos(eye_pos)
 
     def paintEvent(self, a0: QPaintEvent) -> None:
         painter = QPainter()

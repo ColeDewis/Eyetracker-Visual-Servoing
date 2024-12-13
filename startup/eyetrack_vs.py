@@ -16,8 +16,8 @@ if __name__ == "__main__":
     # terminals for the simulation to start
     terminals = {
         # "kortex_bringup": "roslaunch kortex_bringup kortex_bringup.launch",  # launch kortex - note that this starts a roscore
-        # "simulator": "roslaunch simulator simulator.launch start_rqt:=false",
-        "core": "roscore",
+        "simulator": "roslaunch simulator simulator.launch start_rqt:=false",
+        # "core": "roscore",
         "eyetracker": "rosrun eyetracker tobii_et_node.py",
         "cam_gui": "rosrun eye_ui qt_cam.py",
         "overlay_gui": "rosrun eye_ui overlay.py",
