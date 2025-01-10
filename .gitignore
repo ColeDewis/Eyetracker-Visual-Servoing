@@ -8,6 +8,7 @@ __pycache__
 scratch.txt
 *.pkl
 *.png
+*.jpg
 bags
 junk
 learning
