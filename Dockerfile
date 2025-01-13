@@ -1,4 +1,4 @@
-FROM ghcr.io/ualberta-robotics/tobii-ros:master
+FROM ghcr.io/ualberta-robotics/tobii-ros-cuda:master
 ARG USER=user
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -27,7 +27,7 @@ RUN rosdep update
 
 # build the fork of SAM2 that has real-time video prediction
 # NOTE requires CUDA
-# RUN cd /tmp && git clone https://github.com/Gy920/segment-anything-2-real-time.git && cd segment-anything-2-real-time && python3.10 -m pip install -e .
+RUN cd /usr/local/lib/python3.10/dist-packages && git clone https://github.com/Gy920/segment-anything-2-real-time.git && cd segment-anything-2-real-time && python3.10 -m pip install -e .
 
 # aliases
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc

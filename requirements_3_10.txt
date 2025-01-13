@@ -1,2 +1,2 @@
 screeninfo
-numpy
+numpy==1.26

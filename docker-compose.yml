@@ -7,11 +7,18 @@ services:
       context: .
       dockerfile: Dockerfile
       network: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     network_mode: host
     tty: true
     privileged: true
     environment:
       - DISPLAY=${DISPLAY}
     volumes:
-      - ../eyetracking_vs:/home/user/eyetracking_vs
+      - ../Eyetracker-Visual-Servoing:/home/user/eyetracking_vs
       - /tmp/.X11-unix:/tmp/.X11-unix

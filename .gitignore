@@ -9,6 +9,7 @@ scratch.txt
 *.pkl
 *.png
 *.jpg
+catkin_ws/src/sam2_ros/checkpoints/*.pt
 bags
 junk
 learning
