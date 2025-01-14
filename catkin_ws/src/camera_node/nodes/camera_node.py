@@ -70,8 +70,11 @@ class CameraNode:
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
 
         # --- Publishers ---
+        # self.image_pub = rospy.Publisher(
+        #     f"/cameras/cam{self.cam_idx}", Image, queue_size=10
+        # )
         self.image_pub = rospy.Publisher(
-            f"/cameras/cam{self.cam_idx}", Image, queue_size=10
+            f"/camera/color/image_raw", Image, queue_size=10
         )
         self.compressed_image_pub = rospy.Publisher(
             f"/cameras/cam{self.cam_idx}/compressed", CompressedImage, queue_size=10

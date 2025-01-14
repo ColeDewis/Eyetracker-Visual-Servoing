@@ -192,6 +192,7 @@ install(FILES
   launch/cameras.launch
   launch/realsense_cameras.launch
   launch/d405.launch
+  launch/webcam.launch
   # myfile2
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

@@ -66,6 +66,7 @@ add_message_files(
   TrackRequest.msg
   IDPoint.msg
   Contour.msg
+  MaskArray.msg
 )
 
 ## Generate services in the 'srv' folder

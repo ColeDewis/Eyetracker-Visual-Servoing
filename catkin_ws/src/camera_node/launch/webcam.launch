@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="camera_node" name="cam0" type="camera_node.py" output="screen">
+        <param name="cam_idx" value="0"/>
+        <param name="is_rs" value="false"/>
+    </node>
+</launch>

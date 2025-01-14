@@ -1,9 +1,12 @@
 #!/usr/bin/python3.10
 import rospy
 import cv_bridge
+from std_msgs.msg import Empty
 from sensor_msgs.msg import Image
+from custom_msgs.msg import MaskArray
 import rospkg
 import torch
+import numpy as np
 from sam2.sam2_camera_predictor import SAM2CameraPredictor
 from sam2.build_sam import build_sam2_camera_predictor
 
@@ -23,6 +26,12 @@ from sam2.build_sam import build_sam2_camera_predictor
 #         else:
 #             out_obj_ids, out_mask_logits = predictor.track(frame)
 
+# using point prompt
+# points = np.array([[670, 247]], dtype=np.float32)
+# # for labels, `1` means positive click and `0` means negative click
+# labels = np.array([1], dtype=np.int32)
+# bbox = np.array([[600, 214], [765, 286]], dtype=np.float32)
+
 class Sam2Node:
     def __init__(self):
         
@@ -38,9 +47,11 @@ class Sam2Node:
         self.predictor: SAM2CameraPredictor = build_sam2_camera_predictor(model_cfg, sam2_checkpoint)
         self.model_init = False
         self.last_frame = None
+        self.tracked_obj_ids = []
         
         self.image_sub = rospy.Subscriber("/camera/color/image_raw", Image, self.image_callback, queue_size=10)
-        self.mask_pub = rospy.Publisher("/sam2/mask", Image, queue_size=10)
+        self.mask_pub = rospy.Publisher("/sam2/masks", MaskArray, queue_size=10)
+        self.mask_debug = rospy.Publisher("/sam2/debug", Image, queue_size=10)
         
         self.br = cv_bridge.CvBridge()
         rospy.loginfo("Started Sam2 Node!")
@@ -49,13 +60,36 @@ class Sam2Node:
         # TODO: initialize tracking with sam2
         if self.last_frame is None:
             rospy.logerr("No camera frame has been received yet, cannot initialize.")
-        
+            return
+
         self.predictor.load_first_frame(self.last_frame)
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_prompt() # TODO
+        focus_point = np.array([[0, 0]], dtype=np.float32)
+        _, out_obj_ids, out_mask_logits = self.predictor.add_new_prompt(
+            frame_idx=0, 
+            obj_id=0, 
+            points=focus_point, 
+            labels=np.array([1], dtype=np.float32)
+        ) # TODO
         self.model_init = True
-        pass
+        self.publish_masks(out_obj_ids, out_mask_logits)
+
+        # def add_new_prompt(
+        # self,
+        # frame_idx,
+        # obj_id,
+        # points=None,
+        # labels=None,
+        # bbox=None,
+        # clear_old_points=True,
+        # normalize_coords=True,
+        # ):
     
     def image_callback(self, image: Image):
+        """Callback for new image message, updates SAM2 tracking if initialized
+
+        Args:
+            image (Image): image message to update with
+        """
         im = self.br.imgmsg_to_cv2(image, "rgb8")
         self.last_frame = im
         
@@ -65,11 +99,46 @@ class Sam2Node:
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
             out_obj_ids, out_mask_logits = self.predictor.track(im)
 
-            # TODO convert to imgmsg, for each obj id
-            for i, mask in enumerate(out_mask_logits):
-                ...
+            
+            self.publish_masks(out_obj_ids, out_mask_logits)
+
+    def publish_masks(self, ids, logit_masks):
+        """Publishes output masks from SAM2
+
+        Args:
+            ids (list): list of ids from sam2
+            logit_masks (list): list of corresponding masks
+        """
+        # rospy.loginfo(f"IDS: {ids}")
+        # rospy.loginfo(f"Logit masks: {logit_masks}")
+        masks = MaskArray()
+        masks.header.stamp = rospy.get_rostime()
+        masks.masks = []
+        for i, mask in enumerate(logit_masks):
+            imgmsg: Image = self.br.cv2_to_imgmsg((mask > 0.0).float().cpu().numpy().reshape((480, 640)).astype(np.uint8) * 255, encoding="8UC1") 
+            imgmsg.header.frame_id = f"{ids[i]}"
+            masks.masks.append(imgmsg)
+
+            if i == 0:
+                self.mask_debug.publish(imgmsg)
+
+        self.mask_pub.publish(masks)
+
+    def reset(self, msg: Empty):
+        """Resets tracking on an empty message
+
+        Args:
+            msg (Empty): empty (trigger) msg
+        """
+        self.predictor.reset_state()
+
 
 if __name__ == "__main__":
+
     rospy.init_node("sam2_node")
     node = Sam2Node()
+    while node.last_frame is None:
+        rospy.sleep(0.1)
+    node.init_tracking(None)
+
     rospy.spin()
