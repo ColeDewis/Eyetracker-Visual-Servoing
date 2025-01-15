@@ -74,6 +74,7 @@ add_service_files(
   FILES
   SwapWaypoint.srv
   Clipu2netrInference.srv
+  Sam2Prompt.srv
 )
 
 # Generate actions in the 'action' folder

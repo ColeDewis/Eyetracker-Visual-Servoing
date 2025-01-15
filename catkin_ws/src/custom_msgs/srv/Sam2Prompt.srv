@@ -1,0 +1,6 @@
+int32 obj_id
+Point2D[] points
+int32[] labels # 1 if we are "selecting" the point, 0 if we are "deselecting"
+---
+bool success
+string err

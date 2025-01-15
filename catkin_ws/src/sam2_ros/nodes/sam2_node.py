@@ -4,6 +4,7 @@ import cv_bridge
 from std_msgs.msg import Empty
 from sensor_msgs.msg import Image
 from custom_msgs.msg import MaskArray
+from custom_msgs.srv import Sam2Prompt, Sam2PromptRequest, Sam2PromptResponse
 import rospkg
 import torch
 import numpy as np
@@ -46,32 +47,82 @@ class Sam2Node:
         
         self.predictor: SAM2CameraPredictor = build_sam2_camera_predictor(model_cfg, sam2_checkpoint)
         self.model_init = False
+        self.tracking_init = False
         self.last_frame = None
-        self.tracked_obj_ids = []
         
         self.image_sub = rospy.Subscriber("/camera/color/image_raw", Image, self.image_callback, queue_size=10)
         self.mask_pub = rospy.Publisher("/sam2/masks", MaskArray, queue_size=10)
         self.mask_debug = rospy.Publisher("/sam2/debug", Image, queue_size=10)
+
+        self.request_srv = rospy.Service("/sam2/prompt", Sam2Prompt, self.prompt_callback)
         
         self.br = cv_bridge.CvBridge()
         rospy.loginfo("Started Sam2 Node!")
         
-    def init_tracking(self, msg):
-        # TODO: initialize tracking with sam2
+    def init_tracking(self) -> bool:
+        """Initialize tracking using the last frame we got from cameras
+
+        Returns:
+            bool: true if successful, false otherwise
+        """
         if self.last_frame is None:
             rospy.logerr("No camera frame has been received yet, cannot initialize.")
-            return
+            return False
 
         self.predictor.load_first_frame(self.last_frame)
-        focus_point = np.array([[0, 0]], dtype=np.float32)
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_prompt(
-            frame_idx=0, 
-            obj_id=0, 
-            points=focus_point, 
-            labels=np.array([1], dtype=np.float32)
-        ) # TODO
+        self.tracking_init = True
+        return True
+        
+    def prompt_callback(self, req: Sam2PromptRequest) -> Sam2PromptResponse:
+        """Callback for a sam2 prompt request
+
+        Args:
+            req (Sam2PromptRequest): prompt reqest message
+        """
+
+        # NOTE: for now assume we apply any prompt on the latest frame we have. 
+        # this will likely incur some delay but should be good enough
+        resp = Sam2PromptResponse()
+        resp.success = True
+
+        # check for tracking init, and try to initialize it if not.
+        if not self.tracking_init and not self.init_tracking():
+            resp.success = False
+            resp.err = "Tracking could not be initialized"
+            return resp
+
+        focus_points = np.array([[point.x, point.y] for point in req.points])
+        labels = np.array([label for label in req.labels], dtype=np.int32)
+        rospy.loginfo(f"{self.predictor.frame_idx}, len: {self.predictor.condition_state['images']}")
+
+        if not self.model_init:
+            self.predictor.add_new_prompt(
+                frame_idx=0, 
+                obj_id=req.obj_id, 
+                points=focus_points, 
+                labels=labels,
+                clear_old_points=False
+            ) 
+        else:
+            # NOTE: this seems to work but I had to hack some stuff together from the library
+            # is_new_id = req.obj_id not in self.predictor.condition_state["obj_ids"]
+            
+            # TODO: later i would like to make this functional, but for now it breaks really bad
+            # SAM2 doesn't like adding new object ids during tracking, and this method below seemed to be
+            # an attempt of a workaround (they hard set tracking started back to false) in the library, but it doesn't work for me.
+            # If is_new_id is set to true. 
+            # One way I can think to workaround this is to just grab all existing masks from last frame, reset tracking,
+            # and re-initialize using those masks, plus the new point.
+            # Since the video frames are not all stored, we can't just use the other method either. This is amittedly an easy
+            # fix in the source code, but isn't good for memory. I think resetting and reinitializing may actually be the 
+            # best option, given that we shouldn't incur this cost too frequently.
+            is_new_id = False
+            self.predictor.add_new_prompt_during_track(
+                obj_id=req.obj_id, point=focus_points, labels=labels, if_new_target=is_new_id
+            ) 
+ 
         self.model_init = True
-        self.publish_masks(out_obj_ids, out_mask_logits)
+        return resp
 
         # def add_new_prompt(
         # self,
@@ -84,7 +135,8 @@ class Sam2Node:
         # normalize_coords=True,
         # ):
     
-    def image_callback(self, image: Image):
+
+    def image_callback(self, image: Image) -> None:
         """Callback for new image message, updates SAM2 tracking if initialized
 
         Args:
@@ -98,11 +150,9 @@ class Sam2Node:
         
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
             out_obj_ids, out_mask_logits = self.predictor.track(im)
-
-            
             self.publish_masks(out_obj_ids, out_mask_logits)
 
-    def publish_masks(self, ids, logit_masks):
+    def publish_masks(self, ids, logit_masks) -> None:
         """Publishes output masks from SAM2
 
         Args:
@@ -124,21 +174,22 @@ class Sam2Node:
 
         self.mask_pub.publish(masks)
 
-    def reset(self, msg: Empty):
+    def reset(self, msg: Empty) -> None:
         """Resets tracking on an empty message
 
         Args:
             msg (Empty): empty (trigger) msg
         """
         self.predictor.reset_state()
+        self.model_init = False
 
 
 if __name__ == "__main__":
 
     rospy.init_node("sam2_node")
     node = Sam2Node()
-    while node.last_frame is None:
-        rospy.sleep(0.1)
-    node.init_tracking(None)
+    # while node.last_frame is None:
+    #     rospy.sleep(0.1)
+    # node.init_tracking(None)
 
     rospy.spin()

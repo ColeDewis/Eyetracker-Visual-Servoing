@@ -28,6 +28,7 @@ RUN rosdep update
 # build the fork of SAM2 that has real-time video prediction
 # NOTE requires CUDA
 RUN cd /usr/local/lib/python3.10/dist-packages && git clone https://github.com/Gy920/segment-anything-2-real-time.git && cd segment-anything-2-real-time && python3.10 -m pip install -e .
+RUN python3.10 -m pip install opencv-python
 
 # aliases
 RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
