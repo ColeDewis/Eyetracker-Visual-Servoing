@@ -294,11 +294,13 @@ class VS_PFC:
             while self.last_depth_array is None:
                 rospy.sleep(0.1)
 
-        while self.last_target is None:
-            rospy.sleep(0.1)
+        # while self.last_target is None:
+        #     rospy.sleep(0.1)
 
         while self.last_mask is None:
             rospy.sleep(0.1)
+        
+        rospy.loginfo("got mask")
 
         # TODO: need to publish the frame we need, need to test in sim.
 
@@ -323,21 +325,26 @@ class VS_PFC:
             [330, 250],
             [310, 250],
         ])
+        # TEMP
         while it < max_it:
             start = rospy.get_rostime().to_sec()
 
             target_points = self.mask2pcaconstraints(self.last_mask, 0.5)
 
+            error_p = pose - target_points
+            rospy.loginfo(error_p)
+            # [[x1 y1]
+            #  [x2 y2]
+            #  [x3 y3]
+            #  [x4 y4]]
+            # for each point, need to generate matrix we get 4x4 at end.
+            exit()
+
             # interaction for the end effector
             depth = self.__get_pixel_depth(pose) if use_depth else 0.5
             depth = depth if depth != 0 else last_depth
             last_depth = depth
-            target_depth = self.__get_pixel_depth(self.last_target)
-
-            # NOTE: haven't been able to test since robosuite isn't running.... some EGL issue...
-            error_p = pose - target_points
-            print(error_p)
-            exit()
+            # target_depth = self.__get_pixel_depth(self.last_target)
 
             # error_p = np.hstack([pose - self.last_target, pose - self.last_target])
             L_bar = self.generate_interaction_matrix(

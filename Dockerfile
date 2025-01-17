@@ -44,3 +44,6 @@ RUN echo "alias kortex_home='rosrun kortex_bringup send_gen3_home.py'" >> ~/.bas
 RUN echo "alias jackal_home='rosrun kortex_bringup jackal_home.py'" >> ~/.bashrc
 RUN echo "alias reset_all_tracking='rostopic pub --once /tracking_node/reset_all std_msgs/Empty'" >> ~/.bashrc
 RUN echo "alias sim_start='python3 ./startup/sim_start.py && tmux attach'" >> ~/.bashrc
+
+# needed for odin
+RUN export MUJOCO_GL=osmesa
