@@ -19,6 +19,7 @@ from std_msgs.msg import String
 
 from custom_msgs.msg import (
     Point2D,
+    MaskArray
 )
 
 
@@ -47,6 +48,7 @@ class VS_PFC:
 
         # state variables
         self.last_target = None
+        self.last_mask = None
         self.last_depth_array = None
         self.last_eye_time = rospy.Time(0)
         self.last_joints = np.zeros(7)
@@ -59,7 +61,12 @@ class VS_PFC:
         self.eye_sub = rospy.Subscriber(
             "/eyetracker/vs_target",
             Point2D,
-            self.target_callback,
+            self.eye_target_callback,
+        )
+        self.sam_mask_sub = rospy.Subscriber(
+            "/sam2/masks",
+            MaskArray,
+            self.mask_callback
         )
         # self.img_sub = rospy.Subscriber(
         #     f"/camera/color/image_raw",
@@ -83,9 +90,20 @@ class VS_PFC:
     def joint_cb(self, msg: JointState):
         self.last_joints = msg.position[:7]
 
-    def target_callback(self, msg: Point2D):
+    def eye_target_callback(self, msg: Point2D):
         self.last_target = np.array([msg.x, msg.y])
         self.last_eye_time = rospy.get_rostime()
+
+    def mask_callback(self, msg: MaskArray):
+        """Callback for masks from SAM2
+
+        Args:
+            msg (MaskArray): message containing array of all masks 
+        """
+
+        # for now just always grab mask 0
+        mask = msg.masks[0]
+        self.last_mask = self.bridge.imgmsg_to_cv2(mask, "8UC1") / 255
 
     def move_vel(self, velocities):
         """Send the given twist to the kinova
@@ -197,6 +215,55 @@ class VS_PFC:
 
         return L
 
+    def mask2pcaconstraints(self, mask, expand_scale: float, scale_maj: float = 0.02, scale_min: float = 0.02) -> np.ndarray:
+        """Convert a mask to 4 points via PCA
+
+        Args:
+            mask (list): mask image
+            expand_scale (float): scale for how much to expand points from the centroid based on minor axis
+            scale_maj (float, optional): scale for major axis eigenvectors. Defaults to 0.02.
+            scale_min (float, optional): scale for minor axis eigenvectors. Defaults to 0.02.
+
+        Returns:
+            np.ndarray: list of points, starting at top left and going clockwise
+        """
+        
+        data_points = cv2.findNonZero(mask).sum(axis=1).astype(np.float32)
+
+        mean = np.empty((0))
+        mean, eigenvectors, eigenvalues = cv2.PCACompute2(data_points, mean)
+        cntr = (int(mean[0, 0]), int(mean[0, 1]))
+
+        # major
+        maj_ax = (
+            cntr[0] + scale_maj * eigenvectors[0, 0] * eigenvalues[0, 0],
+            cntr[1] + scale_maj * eigenvectors[0, 1] * eigenvalues[0, 0],
+        )
+
+        # minor
+        min_ax = (
+            cntr[0] - scale_min * eigenvectors[1, 0] * eigenvalues[1, 0],
+            cntr[1] - scale_min * eigenvectors[1, 1] * eigenvalues[1, 0],
+        )
+        angle = np.arctan2(eigenvectors[0, 1], eigenvectors[0, 0])  # radians
+        # angle is to maj ax, "Up" negative "Down" positive
+
+        cntr = np.array(cntr)
+        min_ax = np.array(min_ax)
+        min_vec = expand_scale * (min_ax - cntr)
+        min_orth_vec = np.array([-min_vec[1], min_vec[0]])
+
+        # i think this is what we want: creates a square from the minor axis, oriented such that the major axis
+        # points are in the order we want (at least from initial testing)
+        return np.array(
+            [
+                cntr + min_orth_vec + min_vec,
+                cntr + min_orth_vec - min_vec,
+                cntr - min_orth_vec + min_vec,
+                cntr - min_orth_vec - min_vec,
+            ]
+        )
+
     def visual_servo_loop(
         self,
         lambda_step=1.5,
@@ -230,6 +297,9 @@ class VS_PFC:
         while self.last_target is None:
             rospy.sleep(0.1)
 
+        while self.last_mask is None:
+            rospy.sleep(0.1)
+
         # TODO: need to publish the frame we need, need to test in sim.
 
         # iterate:
@@ -246,9 +316,17 @@ class VS_PFC:
         targets = []
         last_depth = 0.5
 
-        pose = np.array([320, 240])
+        # pose = np.array([320, 240])
+        pose = np.array([
+            [310, 230],
+            [330, 230],
+            [330, 250],
+            [310, 250],
+        ])
         while it < max_it:
             start = rospy.get_rostime().to_sec()
+
+            target_points = self.mask2pcaconstraints(self.last_mask, 0.5)
 
             # interaction for the end effector
             depth = self.__get_pixel_depth(pose) if use_depth else 0.5
@@ -256,16 +334,12 @@ class VS_PFC:
             last_depth = depth
             target_depth = self.__get_pixel_depth(self.last_target)
 
-            # we want to drive depth to 0, however we actually want ~15cm. temp hack to speed up convergence
-            # error_d = target_depth * 10 if target_depth > 0.1 else 0
+            # NOTE: haven't been able to test since robosuite isn't running.... some EGL issue...
+            error_p = pose - target_points
+            print(error_p)
+            exit()
 
-            # NOTE: this depth attempt doesn't really work, just causes bad rotational movement.
-            # it is worth noting i did get SOME depth motion when using target_depth instead of depth
-            # in L_star, which could be a route to investigate..
-            # error_p = np.hstack(
-            #     [pose - self.last_target, pose - self.last_target, error_d]
-            # )
-            error_p = np.hstack([pose - self.last_target, pose - self.last_target])
+            # error_p = np.hstack([pose - self.last_target, pose - self.last_target])
             L_bar = self.generate_interaction_matrix(
                 np.array([[pose[0], pose[1], depth]])
             )
@@ -274,25 +348,13 @@ class VS_PFC:
             L_star = self.generate_interaction_matrix(
                 np.array([[self.last_target[0], self.last_target[1], depth]])
             )
-            L_z = np.array(
-                [
-                    0,
-                    0,
-                    -1,
-                    -self.last_target[1] * target_depth,
-                    self.last_target[0] * target_depth,
-                    0,
-                ]
-            )
 
             error_p[:2] = (ALPHA_1 + ALPHA_2) * error_p[:2]
             error_p[2:4] = (BETA_1 + BETA_2) * error_p[2:4]
 
             L = np.zeros((4, 6))
-            # L = np.zeros((5, 6))
             L[:2, :] = ALPHA_1 * L_bar + ALPHA_2 * L_star
             L[2:4, :] = BETA_1 * L_bar + BETA_2 * L_star
-            # L[4, :] = L_z
             L_inv = pinv(L)
 
             rospy.loginfo(f"Error: {error_p}")
