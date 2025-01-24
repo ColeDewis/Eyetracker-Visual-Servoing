@@ -14,7 +14,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    network_mode: host
+    # network_mode: host NOTE: for some reason this is forwarding a ton of ports on Odin crashing it, probably need a more selective setting.
     tty: true
     privileged: true
     environment:

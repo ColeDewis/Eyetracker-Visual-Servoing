@@ -4,6 +4,10 @@
     "workspaceFolder": "/home/user/eyetracking_vs",
     "shutdownAction": "stopCompose",
   
+    "otherPortsAttributes": {
+      "onAutoForward": "ignore"
+    },
+    
     "customizations": {
       "vscode": {
         "extensions": [
@@ -19,10 +23,13 @@
         "github.copilot",
         "github.copilot-chat",
         "ms-iot.vscode-ros",
-        "ms-python.black-formatter",
-      ]
+        "ms-python.black-formatter"
+      	],
+      	"settings": {
+          "remote.autoForwardPorts": false
+        }
       }
-    },
+    }
   
-    "forwardPorts": [3000]
+    // "forwardPorts": [3000]
   }

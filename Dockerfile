@@ -46,4 +46,5 @@ RUN echo "alias reset_all_tracking='rostopic pub --once /tracking_node/reset_all
 RUN echo "alias sim_start='python3 ./startup/sim_start.py && tmux attach'" >> ~/.bashrc
 
 # needed for odin
-RUN export MUJOCO_GL=osmesa
+RUN apt install libosmesa6 libgl1-mesa-glx
+RUN echo "export MUJOCO_GL=osmesa" >> ~/.bashrc
