@@ -164,6 +164,7 @@ catkin_package(
 catkin_install_python(PROGRAMS
   nodes/visual_servo_node.py
   nodes/eih_eyetracker_vs.py
+  nodes/eih_eyetracker_uncal_vs.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

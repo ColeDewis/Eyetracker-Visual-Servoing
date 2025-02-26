@@ -210,7 +210,7 @@ class SimulatedGen3(object):
             vel = vels[i]
             joint_speed = JointSpeed()
             joint_speed.joint_identifier = i
-            joint_speed.value = vel
+            joint_speed.value = np.rad2deg(vel)
             req.input.joint_speeds.append(joint_speed)
 
         # Send the velocity

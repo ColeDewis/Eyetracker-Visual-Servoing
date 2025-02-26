@@ -77,24 +77,44 @@ def pca_minorax2corners(cntr, min_ax, scale: float = 0.5):
         ]
     )
 
+def rotate_image(image, angle):
+  image_center = tuple(np.array(image.shape[1::-1]) / 2)
+  rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+  result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+  return result
 
 if __name__ == "__main__":
-    img = cv2.imread("ball3.jpg")
+    img = cv2.imread("oval1.jpg")
     img = cv2.flip(img, 0)
+    img = rotate_image(img, 45)
     # img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
     # cv2.imshow("img", img)
     # cv2.waitKey()
     # mask created with HSV thresholds
-    filter_low_mask = (200, 200, 200)
-    filter_high_mask = (300, 300, 300)
+    filter_low_mask = (0, 0, 0)
+    filter_high_mask = (240, 240, 240)
     mask = cv2.inRange(img, filter_low_mask, filter_high_mask)
     cntr, maj_ax, min_ax, angle = pca(mask)
-    points = pca_minorax2corners(cntr, min_ax)
-    print(angle)
+    # points = pca_minorax2corners(cntr, min_ax)
+    # print(angle)
 
     maskim = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     cv2.line(maskim, cntr, (int(maj_ax[0]), int(maj_ax[1])), (255, 0, 0), 4)
     cv2.line(maskim, cntr, (int(min_ax[0]), int(min_ax[1])), (0, 255, 0), 4)
+    min_ax = np.array(min_ax)
+    maj_ax = np.array(maj_ax)
+    min_vec = 0.5 * (min_ax - cntr)
+    min_orth_vec = np.array([-min_vec[1], min_vec[0]])
+    # maj_vec = 0.5 * (maj_ax - cntr)
+
+    points = np.array(
+        [
+            cntr + min_vec,
+            cntr + min_orth_vec,
+            cntr - min_vec,
+            cntr - min_orth_vec,
+        ]
+    )
 
     for pt in points:
         print(pt[0])

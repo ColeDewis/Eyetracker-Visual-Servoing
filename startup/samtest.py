@@ -17,7 +17,7 @@ if __name__ == "__main__":
     terminals = {
         "simulator": "roslaunch simulator simulator.launch start_rqt:=true",
         "sam2": "rosrun sam2_ros sam2_node.py",
-        "visual_servoing": "rosrun visual_servoing eih_eyetracker_vs.py",
+        "visual_servoing": "rosrun visual_servoing eih_eyetracker_uncal_vs.py",
         "target_picker": "rosrun sam2_ros target_select.py",
     }
 
