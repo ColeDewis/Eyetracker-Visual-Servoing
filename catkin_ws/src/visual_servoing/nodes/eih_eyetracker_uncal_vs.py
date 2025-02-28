@@ -207,6 +207,8 @@ class UVS:
             move_func(vel)
             init_pts = self.mask2pcaconstraints(self.last_mask, 1.5)
             rospy.sleep(WAIT_TIME)
+            move_func(np.zeros(dim))
+            rospy.sleep(0.1)
             rospy.wait_for_message("/sam2/masks", Image)
 
             # get the error change
@@ -313,20 +315,29 @@ class UVS:
         # TODO: this has a bug where the order swaps sometimes. how can we fix this?
 
         # rospy.loginfo(f"{vectors}")
+        # return np.array(
+        #     [
+        #         cntr + min_vec,
+        #         cntr + min_orth_vec,
+        #         cntr - min_vec,
+        #         # cntr - min_orth_vec,
+        #     ]
+        # )
+        offset = 20
         return np.array(
             [
-                cntr + min_vec,
-                cntr + min_orth_vec,
-                cntr - min_vec,
-                cntr - min_orth_vec,
+                cntr + np.array([0, offset]),
+                cntr + np.array([offset, 0]),
+                cntr - np.array([0, offset]),
+                cntr - np.array([offset, 0]),
             ]
         )
 
     def visual_servo_loop(
         self,
         # lambda_step=1.5,
-        lambda_step=0.01,
-        alpha=0.1,
+        lambda_step=0.1,
+        alpha=0.5,
         rate=5,
         use_depth=True,
         max_it=np.inf,
@@ -374,14 +385,14 @@ class UVS:
         # ])
         pose = np.array(
             [
-                [320 + offset, 240],
                 [320, 240 + offset],
-                [320 - offset, 240],
+                [320 + offset, 240],
                 [320, 240 - offset],
+                [320 - offset, 240],
             ]
         )
         self.pose = pose
-        jacobian, inv_jacobian = self.init_jacobian(self.pose.flatten().shape[0], is_joint_vel=True, n_joints=7)
+        jacobian, inv_jacobian = self.init_jacobian(self.pose.flatten().shape[0], is_joint_vel=False, n_joints=7)
 
         target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
         error_p = pose - target_points
@@ -392,6 +403,16 @@ class UVS:
 
         rospy.loginfo(f"\n\n{jacobian @ vels}")
         # exit()
+
+        # NOTE: in general this control does seem to work, but the initialization is very poor
+        # e.g. local convergence: sometimes we just don't have the information we need to solve the problem from the initial jacobian
+        # (for example, when we have to change our depth. i think we just never see enough data that shows us that we can go up/down)
+        # (i think we probably would have a similar problem when we need rotation. this is likely why martin would decompose tasks: 
+        #   if we can rotate once already aligned above, that is VERY easy data collection to complete.)
+        # in order to get the scaling right, since we only ever saw very limited info in initialization that it helps us
+        # the broyden updates being on/off doesn't change this either, since we don't see that data.
+        # will work more to solve this but this will bring up an important problem for the real time learning moving forward:
+        #       - how do we handle what to do when we haven't seen it before? (exploration like RL?)
         error_p = [9999]
         while it < max_it and np.linalg.norm(error_p) > 5:
             start = rospy.get_rostime().to_sec()
@@ -407,13 +428,13 @@ class UVS:
             #  [x2 y2]
             #  [x3 y3]
             #  [x4 y4]]
-            # exit()
             
-            vels = -LAMBDA * inv_jacobian @ error_p.flatten()
-            # self.move_vel(vels)
-            self.move_joint_vel(vels)
+            vels = LAMBDA * inv_jacobian @ error_p.flatten()
+            self.move_vel(vels)
+            # self.move_joint_vel(vels)
 
             rospy.loginfo(f"velocity: {vels}")
+            rospy.loginfo(f"error: {error_p.flatten()}\n\n")
 
             error_pos.append(error_p[:2])
             targets.append(self.last_target)
@@ -423,7 +444,7 @@ class UVS:
             target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
             features_vel = (target_points - self.last_target) / (1/RATE)
             jacobian, inv_jacobian = self.broyden_update(jacobian, vels, features_vel.flatten(), ALPHA, 0.01)
-            rospy.loginfo(f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}")
+            # rospy.loginfo(f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}")
             it += 1
             # break
 
