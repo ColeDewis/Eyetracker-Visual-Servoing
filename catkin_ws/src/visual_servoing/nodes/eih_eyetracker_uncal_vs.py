@@ -180,6 +180,83 @@ class UVS:
             img, (int(p[0]), int(p[1])), (int(q[0]), int(q[1])), colour, 1, cv2.LINE_AA
         )
 
+    def get_adjoint_matrix(self, rot, trans):
+        """Given a rotation matrix and translation vector, returns the adjoint representation of the transformation in R3
+
+        Args:
+            rot (list): 3x3 rotation matrix from camera to eef
+            trans (list): vector in R3 representing the translation from camera to eef
+
+        Returns:
+            matrix: 6x6 numpy matrix representing the adjoint matrix
+        """
+        skew_t = np.array(
+            [
+                [0, -trans[2], trans[1]],
+                [trans[2], 0, -trans[0]],
+                [-trans[1], trans[0], 0],
+            ]
+        )
+        upper = np.hstack([rot, skew_t @ rot])
+        lower = np.hstack([np.zeros((3, 3)), rot])
+        adjoint_mat = np.vstack([upper, lower])
+
+        return adjoint_mat
+
+    def analytic_jacobian(self, error_dim: int, targets: np.ndarray):
+        """Analytical jacobian matrix
+
+        Args:
+            error_dim (int): error dimension (2 * number of points)
+        """
+        try:
+            cam_frame = "camera_color_frame"
+            eef_transform: TransformStamped = self.tf_buffer.lookup_transform(
+                "base_link",
+                cam_frame,
+                rospy.Time(0),
+            )
+        except (
+            tf2_ros.LookupException,
+            tf2_ros.ConnectivityException,
+            tf2_ros.ExtrapolationException,
+        ) as e:
+            rospy.logwarn(
+                f"Failed to lookup transform to camera from base: {e}"
+            )
+            return
+
+        eef_transform: Transform = eef_transform.transform
+        translation = np.array(
+            [
+                eef_transform.translation.x,
+                eef_transform.translation.y,
+                eef_transform.translation.z,
+            ]
+        )
+        q = np.array(
+            [
+                eef_transform.rotation.x,
+                eef_transform.rotation.y,
+                eef_transform.rotation.z,
+                eef_transform.rotation.w,
+            ]
+        )
+        rot = tf_conversions.transformations.quaternion_matrix(q)[:3, :3]
+        adj_mat = self.get_adjoint_matrix(rot, translation)
+
+        jacob = np.zeros((error_dim, 6))
+
+        for i in range(error_dim//2):
+            x, y = targets[i][0], targets[i][1]
+            Z = 0.5 # est
+            f = 600
+            jacob[i*2, :] = np.array([-f / Z, 0, x / Z, x * y / f, -(f + x * x / f), y])
+            jacob[i*2 + 1, :] = np.array([0, -f / Z, y / Z, f + y * y / f, -x * y / f, -x])
+
+        jacob = jacob @ adj_mat 
+        return jacob, pinv(jacob)
+
     def init_jacobian(self, error_dim: int, is_joint_vel: bool = False, n_joints: int = 0):
         """Initializes jacobian given dimension of error
 
@@ -192,14 +269,20 @@ class UVS:
             jacob =  np.zeros((error_dim, n_joints))
             dim = n_joints
             move_func = self.move_joint_vel
+            VEL_SCALE = 0.1
+            vels = np.identity(dim) * VEL_SCALE
         else:
             jacob = np.zeros((error_dim, 6))
             dim = 6
             move_func = self.move_vel
+            VEL_SCALE_LIN = 0.1
+            VEL_SCALE_ANG = 0.25
+            vels = np.identity(dim)
+            vels[:, :3] *= VEL_SCALE_LIN
+            vels[:, 3:] *= VEL_SCALE_ANG
 
         WAIT_TIME = 0.5
-        VEL_SCALE = 0.1
-        vels = np.identity(dim) * VEL_SCALE
+        
         for i in range(6):
             # IDEA: basis updates where we move at some velocity and observe feature velocity
             vel = vels[i, :]
@@ -222,7 +305,7 @@ class UVS:
         self.move_vel([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         return jacob, pinv(jacob)
 
-    def broyden_update(self, jacobian: np.ndarray, vel: np.ndarray, features_vel: np.ndarray, alpha_step: float, joint_thresh: float) -> Tuple: 
+    def broyden_update(self, jacobian: np.ndarray, vel: np.ndarray, features_vel: np.ndarray, alpha_step: float, joint_thresh: float, features_thresh: float) -> Tuple: 
         """Updates the Jacobian using a broyden update
 
         Args:
@@ -240,12 +323,16 @@ class UVS:
         
         # if joints havent moved enough, don't update on this iteration
         if norm(del_theta) < joint_thresh: 
-            rospy.loginfo(f'No Update')
+            rospy.loginfo(f'No Update: Joints')
             return jacobian, pinv(jacobian)
         
+        # if features havent moved enough, don't update on this iteration
+        if norm(del_e) < features_thresh:
+            rospy.loginfo(f"No Update: Features")
+            return jacobian, pinv(jacobian)
+
         # broyden update
         numerator = del_e - jacobian @ del_theta
-        rospy.loginfo(f"{numerator.shape}, {del_theta.shape}, {del_e.shape}")
         update = numerator.reshape(-1, 1) @ del_theta.reshape(1, -1) / (del_theta.reshape(1, -1) @ del_theta)
         
         # update jacobian 
@@ -313,32 +400,46 @@ class UVS:
         self.pca_pub.publish(self.bridge.cv2_to_imgmsg(mask_im, "rgb8"))
 
         # TODO: this has a bug where the order swaps sometimes. how can we fix this?
-
-        # rospy.loginfo(f"{vectors}")
         # return np.array(
         #     [
         #         cntr + min_vec,
         #         cntr + min_orth_vec,
         #         cntr - min_vec,
-        #         # cntr - min_orth_vec,
+        #         cntr - min_orth_vec,
         #     ]
         # )
-        offset = 20
+
+        # angle seemed to flip from 2.35 -> -0.78; so the angle is somehow from 0->pi, which is odd.
+        # we can modify as below to get from 0->pi, but we still get a "flip" - this seems to be because
+        # we don't get an angle with range from 0->2pi :(
+        # just VERY unstable whenever i put the angle back in. maybe a parallel line constraint could be better?
+        #   - however flip could still affect this. since the side points would also flip  
+        angle = angle if angle > 0 else np.pi + angle
+        rospy.loginfo(f"pca angle: {angle}")
+
+        # angle = 0 # override
+        rot_mat = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+
+        offset = norm((min_ax - cntr)) * 2
         return np.array(
             [
-                cntr + np.array([0, offset]),
-                cntr + np.array([offset, 0]),
-                cntr - np.array([0, offset]),
-                cntr - np.array([offset, 0]),
+                cntr + rot_mat @ np.array([0, offset]),
+                cntr + rot_mat @ np.array([offset, 0]),
+                cntr - rot_mat @ np.array([0, offset]),
+                cntr - rot_mat @ np.array([offset, 0]),
+                # cntr - np.array([offset, 0]),
+                # cntr + np.array([0, offset]),
+                # cntr + np.array([offset, 0]),
+                # cntr - np.array([0, offset]),
             ]
         )
 
     def visual_servo_loop(
         self,
         # lambda_step=1.5,
-        lambda_step=0.1,
+        lambda_step=0.1, 
         alpha=0.5,
-        rate=5,
+        rate=10,
         use_depth=True,
         max_it=np.inf,
     ):
@@ -376,7 +477,7 @@ class UVS:
         targets = []
 
         # pose = np.array([320, 240])
-        offset = 5
+        offset = 25
         # pose = np.array([
         #     [320 - offset, 240 - offset],
         #     [320 + offset, 240 - offset],
@@ -394,14 +495,14 @@ class UVS:
         self.pose = pose
         jacobian, inv_jacobian = self.init_jacobian(self.pose.flatten().shape[0], is_joint_vel=False, n_joints=7)
 
-        target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
-        error_p = pose - target_points
-        vels = -LAMBDA * inv_jacobian @ error_p.flatten()
-        rospy.loginfo(f"\n\nError: {error_p}, \n\n velocity: {vels}")
+        # target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
+        # error_p = pose - target_points
+        # vels = -LAMBDA * inv_jacobian @ error_p.flatten()
+        # rospy.loginfo(f"\n\nError: {error_p}, \n\n velocity: {vels}")
 
-        rospy.loginfo(f"Jacobian: {jacobian}") # \n\n Inverse: {inv_jacobian}")
+        # rospy.loginfo(f"Jacobian: {jacobian}") # \n\n Inverse: {inv_jacobian}")
 
-        rospy.loginfo(f"\n\n{jacobian @ vels}")
+        # rospy.loginfo(f"\n\n{jacobian @ vels}")
         # exit()
 
         # NOTE: in general this control does seem to work, but the initialization is very poor
@@ -413,11 +514,13 @@ class UVS:
         # the broyden updates being on/off doesn't change this either, since we don't see that data.
         # will work more to solve this but this will bring up an important problem for the real time learning moving forward:
         #       - how do we handle what to do when we haven't seen it before? (exploration like RL?)
+        # EDIT: mostly was actually due to bug with the constant constraints: we can actually use points for depth quite nicely
+        # however, rotations for UVS are still difficult (getting camera retreat instead of rotating)
         error_p = [9999]
         while it < max_it and np.linalg.norm(error_p) > 5:
             start = rospy.get_rostime().to_sec()
 
-            target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
+            target_points = self.mask2pcaconstraints(self.last_mask, 2)
             self.last_target = target_points
             error_p = pose - target_points
             
@@ -428,13 +531,14 @@ class UVS:
             #  [x2 y2]
             #  [x3 y3]
             #  [x4 y4]]
-            
+            # jacobian, inv_jacobian = self.analytic_jacobian(4, target_points)
             vels = LAMBDA * inv_jacobian @ error_p.flatten()
+            vels = np.array([0, 0, 0.0, 0, 0, 0.5])
             self.move_vel(vels)
             # self.move_joint_vel(vels)
 
-            rospy.loginfo(f"velocity: {vels}")
-            rospy.loginfo(f"error: {error_p.flatten()}\n\n")
+            # rospy.loginfo(f"velocity: {vels}")
+            # rospy.loginfo(f"error: {error_p.flatten()}\n\n")
 
             error_pos.append(error_p[:2])
             targets.append(self.last_target)
@@ -443,7 +547,7 @@ class UVS:
 
             target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
             features_vel = (target_points - self.last_target) / (1/RATE)
-            jacobian, inv_jacobian = self.broyden_update(jacobian, vels, features_vel.flatten(), ALPHA, 0.01)
+            jacobian, inv_jacobian = self.broyden_update(jacobian, vels, features_vel.flatten(), ALPHA, 0.01, 5)
             # rospy.loginfo(f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}")
             it += 1
             # break
