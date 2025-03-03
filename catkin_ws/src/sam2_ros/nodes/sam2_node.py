@@ -53,7 +53,8 @@ class Sam2Node:
         self.image_sub = rospy.Subscriber("/camera/color/image_raw", Image, self.image_callback, queue_size=10)
         self.mask_pub = rospy.Publisher("/sam2/masks", MaskArray, queue_size=10)
         self.mask_debug = rospy.Publisher("/sam2/debug", Image, queue_size=10)
-
+        
+        self.reset_sub = rospy.Subscriber("/sam2/reset", Empty, self.reset)
         self.request_srv = rospy.Service("/sam2/prompt", Sam2Prompt, self.prompt_callback)
         
         self.br = cv_bridge.CvBridge()
@@ -180,8 +181,10 @@ class Sam2Node:
         Args:
             msg (Empty): empty (trigger) msg
         """
+        rospy.loginfo("Sam2: RESETTING - Clearing Masks")
         self.predictor.reset_state()
         self.model_init = False
+        self.tracking_init = False
 
 
 if __name__ == "__main__":

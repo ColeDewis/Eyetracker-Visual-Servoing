@@ -16,7 +16,7 @@ from simulator.kinova_gen3_camera import KinovaGen3Camera
 
 from sensor_msgs.msg import Image, JointState
 from geometry_msgs.msg import TransformStamped, Transform
-from std_msgs.msg import String
+from std_msgs.msg import String, Empty
 
 from custom_msgs.msg import Point2D, MaskArray
 
@@ -53,6 +53,7 @@ class UVS:
         self.last_eye_time = rospy.Time(0)
         self.last_joints = np.zeros(7)
         self.last_sign = "plus"
+        self.start_signal = False
 
         # TF buffer
         self.tf_buffer = tf2_ros.Buffer()
@@ -85,6 +86,7 @@ class UVS:
         self.joint_sub = rospy.Subscriber(
             "/my_gen3/joint_states", JointState, self.joint_cb
         )
+        self.start_signal_sub = rospy.Subscriber("/uvs/start", Empty, self.start_signal_cb)
 
         rospy.sleep(0.5)
         rospy.loginfo("VS is ready to run!")
@@ -110,6 +112,9 @@ class UVS:
 
     def joint_cb(self, msg: JointState):
         self.last_joints = msg.position[:7]
+
+    def start_signal_cb(self, msg: Empty):
+        self.start_signal = True
 
     def eye_target_callback(self, msg: Point2D):
         self.last_target = np.array([msg.x, msg.y])
@@ -358,8 +363,11 @@ class UVS:
         Returns:
             np.ndarray: list of points, starting at top left and going clockwise
         """
+        non_zero = cv2.findNonZero(mask)
+        if non_zero is None:
+            return None
 
-        data_points = cv2.findNonZero(mask).sum(axis=1).astype(np.float32)
+        data_points = non_zero.sum(axis=1).astype(np.float32)
 
         mean = np.empty((0))
         mean, eigenvectors, eigenvalues = cv2.PCACompute2(data_points, mean)
@@ -415,9 +423,10 @@ class UVS:
         # just VERY unstable whenever i put the angle back in. maybe a parallel line constraint could be better?
         #   - however flip could still affect this. since the side points would also flip  
         angle = angle if angle > 0 else np.pi + angle
-        rospy.loginfo(f"pca angle: {angle}")
+        angle *= 2
+        # rospy.loginfo(f"pca angle: {angle}")
 
-        # angle = 0 # override
+        angle = 0 # override
         rot_mat = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
 
         offset = norm((min_ax - cntr)) * 2
@@ -439,8 +448,8 @@ class UVS:
         # lambda_step=1.5,
         lambda_step=0.1, 
         alpha=0.5,
-        rate=10,
-        use_depth=True,
+        rate=5,
+        use_depth=False,
         max_it=np.inf,
     ):
         """UVS Controller Loop
@@ -462,6 +471,9 @@ class UVS:
         #     rospy.sleep(0.1)
 
         while self.last_mask is None:
+            rospy.sleep(0.1)
+
+        while not self.start_signal:
             rospy.sleep(0.1)
 
         rospy.loginfo("got mask")
@@ -516,11 +528,16 @@ class UVS:
         #       - how do we handle what to do when we haven't seen it before? (exploration like RL?)
         # EDIT: mostly was actually due to bug with the constant constraints: we can actually use points for depth quite nicely
         # however, rotations for UVS are still difficult (getting camera retreat instead of rotating)
+        # NOTE: PickPlace env is very very nice
         error_p = [9999]
         while it < max_it and np.linalg.norm(error_p) > 5:
             start = rospy.get_rostime().to_sec()
 
             target_points = self.mask2pcaconstraints(self.last_mask, 2)
+            if target_points is None:
+                r.sleep()
+                continue
+
             self.last_target = target_points
             error_p = pose - target_points
             
@@ -533,12 +550,12 @@ class UVS:
             #  [x4 y4]]
             # jacobian, inv_jacobian = self.analytic_jacobian(4, target_points)
             vels = LAMBDA * inv_jacobian @ error_p.flatten()
-            vels = np.array([0, 0, 0.0, 0, 0, 0.5])
+            # vels = np.array([0, 0, 0.0, 0, 0, 0.5])
             self.move_vel(vels)
             # self.move_joint_vel(vels)
 
-            # rospy.loginfo(f"velocity: {vels}")
-            # rospy.loginfo(f"error: {error_p.flatten()}\n\n")
+            rospy.loginfo(f"velocity: {vels}")
+            rospy.loginfo(f"error: {error_p.flatten()}\n\n")
 
             error_pos.append(error_p[:2])
             targets.append(self.last_target)
@@ -546,6 +563,8 @@ class UVS:
             r.sleep()
 
             target_points = self.mask2pcaconstraints(self.last_mask, 1.5)
+            if target_points is None: continue
+            
             features_vel = (target_points - self.last_target) / (1/RATE)
             jacobian, inv_jacobian = self.broyden_update(jacobian, vels, features_vel.flatten(), ALPHA, 0.01, 5)
             # rospy.loginfo(f"Time: {rospy.get_rostime().to_sec() - start}, it: {it}")

@@ -140,7 +140,7 @@ class Simulator:
         self.seg_lvl = "element"  # element, class, instance
         rospy.loginfo(f"Controller Config: {config}")
         env = suite.make(
-            env_name="Lift",  # NutAssemblyRound, Wipe (no gripper), see https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
+            env_name="PickPlace",  # Lift, NutAssemblySquare, NutAssemblyRound, Wipe (no gripper), see https://github.com/ARISE-Initiative/robosuite/tree/master/robosuite/environments/manipulation
             robots="Kinova3",
             has_renderer=True,
             has_offscreen_renderer=True,
