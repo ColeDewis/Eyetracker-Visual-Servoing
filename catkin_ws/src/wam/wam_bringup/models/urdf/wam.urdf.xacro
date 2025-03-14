@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<robot name="wam" xmlns:xacro="http://www.ros.org/wiki/xacro" xmlns:controller="http://playerstage.sourceforge.net/gazebo/xmlschema/#controller">
+	<xacro:arg name="dof" default="7" />
+	<xacro:arg name="barrett_hand" default="true" />
+	<xacro:arg name="fts" default="false" />
+	
+	<include filename="$(find wam_description)/urdf/common.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/transmission.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/wam_base.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/4dof_link.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/wrist_link.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/fts.urdf.xacro" />
+	<include filename="$(find wam_description)/urdf/barrett_hand.urdf.xacro" />
+  	<include filename="$(find wam_description)/urdf/mono_camera.urdf.xacro" />
+	  <include filename="$(find wam_description)/urdf/stereo_camera.urdf.xacro" />
+	<!-- #4DOF link -->
+	<if value="${$(arg dof) == 4}">
+		<wam_base />
+		<four_dof_link parent_link="ThirdLink" />
+		<gravity_off dof="4" hand="$(arg barrett_hand)" />
+		<!-- #parent link for ee, barrett_hand or FTS -->
+		<property name="parent_link" value="FourthLink" />
+		<!-- #tool xyz, relative to Joint 4 for mounting FTS or BarrettHand -->
+		<property name="tool_xyz" value="-0.045 0 0.345" />
+		<property name="camera_xyz" value="-0.045 0 0.41" />
+	</if>
+	<!-- #7DOF link -->
+	<if value="${$(arg dof) == 7}">
+		<wam_base />
+		<wrist_link parent_link="ThirdLink" />
+		<gravity_off dof="7" hand="$(arg barrett_hand)" />
+		<property name="parent_link" value="SeventhLink" />
+		<!-- #parent link for ee, barrett_hand or FTS -->
+    	<property name="tool_xyz" value="0 0 -0.01" />
+		<property name="camera_xyz" value="0 0 0.055" />
+	</if>
+	<!-- #Standalone Barrett Hand -->
+	<if value="${$(arg dof) == 0}">
+		<gravity_off dof="0" hand="$(arg barrett_hand)" />
+		<property name="parent_link" value="world" />
+		<!-- #parent link for ee, barrett_hand or FTS -->
+		<property name="tool_xyz" value="0 0 0" />
+		<!-- #tool xyz, relative to world for mounting FTS or BarrettHand -->
+		<link name="world" />
+	</if>
+	<!-- #Macro to turn gravity off in gazebo -->
+	<if value="$(arg fts)">
+		<fts xyz="${tool_xyz}" rpy="0 0 0" parent_link="${parent_link}" />
+		<if value="$(arg barrett_hand)">
+			<!-- FTS and Hand -->
+			<barrett_hand xyz="0 0 0.01" rpy="0 0 ${pi/2}" parent_link="fts_link" />
+			<link name="ee" />
+			<joint name="ee_fixed" type="fixed">
+				<parent link="bhand_base" />
+				<origin xyz="0 0 0" rpy="0 0 -${pi/2}" />
+				<axis xyz="0 1 0" />
+				<child link="ee" />
+			</joint>
+		</if>
+		<unless value="$(arg barrett_hand)">
+			<!-- #FTS, no hand -->
+			<link name="ee" />
+			<joint name="ee_fixed" type="fixed">
+				<parent link="fts_link" />
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<axis xyz="0 1 0" />
+				<child link="ee" />
+			</joint>
+		</unless>
+	</if>
+	<unless value="$(arg fts)">
+		<if value="$(arg barrett_hand)">
+			<!-- #Hand, no FTS -->
+			<barrett_hand xyz="${tool_xyz}" rpy="0 0 ${pi/2}" parent_link="${parent_link}" />
+			<link name="ee" />
+			<joint name="ee_fixed" type="fixed">
+				<parent link="bhand_base" />
+				<origin xyz="0 0 0.05" rpy="0 0 -${pi/2}" />
+				<axis xyz="0 1 0" />
+				<child link="ee" />
+			</joint>
+		</if>
+		<unless value="$(arg barrett_hand)">
+			<!-- #No hand or fts -->
+			<link name="ee" />
+			<joint name="ee_fixed" type="fixed">
+				<parent link="${parent_link}" />
+				<origin xyz="${tool_xyz}" rpy="0 0 0" />
+				<axis xyz="0 1 0" />
+				<child link="ee" />
+			</joint>
+		</unless>
+	</unless>
+  <!-- #Load mono_camera -->
+  <if value="$(arg mono_camera)">
+  <mono_camera parent_link="${parent_link}" xyz="${camera_xyz}" />
+  </if>
+  <!-- #Load stereo_camera -->
+  <if value="$(arg stereo_camera)">
+  <stereo_camera parent_link="${parent_link}" xyz="${camera_xyz}" />
+  </if>
+	<!-- #Load Transmission for WAM and/or BarrettHand -->
+	<wam_transmission dof="$(arg dof)" hand="$(arg barrett_hand)" />
+</robot>

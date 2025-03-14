@@ -1,0 +1,2 @@
+class PiecewiseLinearVS():
+    pass
