@@ -11,13 +11,14 @@ class LinearNDInterpolatorExt(object):
     self.funcnearest = interp.NearestNDInterpolator(points,values)
   def __call__(self,*args):
     t = self.funcinterp(*args)
-    if not np.isnan(t):
-      return t.item(0)
+    print(t)
+    if not np.isnan(t).all():
+      return t.flatten()
     else:
       return self.funcnearest(*args)
 
 if __name__ == "__main__":
-    q = np.random.rand(6, 7)
+    q = np.random.rand(4, 7)
     # q = np.array([
     #     [5, 5, 3,3], # e.g. delta q 1
     #     [5, 7, 3,3],
@@ -30,11 +31,13 @@ if __name__ == "__main__":
     #     [6, 3, 2, 1],
     #     [4, 4, 4, 4],
     # ])
-    e = np.random.rand(6, 7)
+    e = np.random.rand(4, 4)
+    # print(q)
+    # print(e)
     # print(e[:, 0])
-    func = LinearNDInterpolatorExt(q, e[:, 0])
+    func = LinearNDInterpolatorExt(e, q)
     
-    print(func([2, 2, 2, 2]))
+    print(func([0.5, 0.5, 0.5]))
 
     # Some notes:
     # will need enough data to initialize interpolation, don't know if that is reasonable for us
